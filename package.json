@@ -1,0 +1,46 @@
+{
+  "name": "aws_s3",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "react-app-rewired start",
+    "build": "react-scripts build",
+    "serve": "nodemon -w ./api ./api/index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.454.0",
+    "@aws-sdk/credential-providers": "^3.454.0",
+    "@aws-sdk/s3-request-presigner": "^3.454.0",
+    "aws-sdk": "^2.1500.0",
+    "cors": "^2.8.5",
+    "crypto": "^1.0.1",
+    "crypto-browserify": "^3.12.0",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "file-saver": "^2.0.5",
+    "https-browserify": "^1.0.0",
+    "nodemon": "^3.0.1",
+    "react": "^18.2.0",
+    "react-app-rewired": "^2.2.1",
+    "react-dom": "^18.2.0",
+    "react-scripts": "^5.0.1",
+    "stream-browserify": "^3.0.0",
+    "stream-http": "^3.2.0"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}
