@@ -7,5 +7,4 @@ export default {
   Key: 'Colttaine.zip',
   ChunkSize: 16777216, // 16M
   region: "ap-southeast-2",
-  batch: 10
 };
