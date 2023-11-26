@@ -1,14 +1,7 @@
 import config from "./config";
-import { getS3FileSize, getObject, s3 } from './helper';
+import { getS3FileSize, getObject } from './helper';
 
-function log(...args) {
-  console.log(...args);
-}
-
-export const downloadFiles = (setComments, setSize) => async () => {
-  /** helper function to display information */
-  let pushComment = str => setComments(comments => [...comments, str]);
-
+export const downloadFiles = async (onmessage = () => {}) => {
   // Main procedure
 
   let fileSave = await showSaveFilePicker();
@@ -34,38 +27,48 @@ export const downloadFiles = (setComments, setSize) => async () => {
         return `bytes=${start}-${end}`;
       }
 
-      /** Read data of a given chunk index */
-      function getDataGivenIndex(index) {
+      /**
+       * Read data of a given chunk index
+       * @returns binary data (array buffer)
+       */
+      function getBinaryDataOfChunk(index) {
         return getObject(config.bucketName, config.Key, byteRangeOfChunk(index));
       }
 
       /** Write the given buffers to local using `writer` */
-      async function writeToSave(buffers) {
+      async function writeDataToLocalFile(buffers) {
         for (let i = 0, length = buffers.length; i < length; i++) {
           await writer.write(buffers[i]);
 
           // Set size
-          setSize(size => size + buffers[i].length);
+          onmessage({
+            type: 'downloaded',
+            payload: buffers[i].length
+          });
         }
       }
 
-      class ItemReader {
+      /**
+       * Item fetcher, every fetching data from s3 will be done by this item fetcher.
+       * Given a index of chunk to fetch, it starts fetching automatically and as soon as
+       * fetching is ended it calls {@link tryToWriteData} function, which trys to loaded
+       * data to local file.
+       */
+      class ItemFetcher {
         loaded = false;
         data = null;
         chunkIndex = null;
 
         constructor(index) {
-          log('[start_chunk_read]', index);
           this.chunkIndex = index;
           
           let _this = this;
-          getDataGivenIndex(index)
+          getBinaryDataOfChunk(index)
             .then(response => {
-              log('[chunk_read_success]', index);
               _this.data = response;
               _this.loaded = true;
 
-              tryToWriteDate();
+              tryToWriteData();
             })
             .catch(err => {
               console.error("[Error]", err);
@@ -75,40 +78,41 @@ export const downloadFiles = (setComments, setSize) => async () => {
 
       //
       // End helper functions
-      
-      pushComment(`The file is ${SIZE} bytes`);
-      pushComment(`There are all ${length} chunks`);
-      
-      pushComment('Fetching...');
-      
-      //
 
-      let pool = new Map();
-      let maxBatchSize = config.maxBatchSize;
+      onmessage({ type: 'size', payload: SIZE });
+
+      let pool = new Map(); // a pool that holds ItemFetchers
+      let maxPoolSize = config.maxPoolSize;
+      /**
+       * Next chunk index to fetch.  
+       * `chunkIndexToFetch = 10` means that chunks 0-9 is already fetched or
+       * under progress.
+       */ 
       let chunkIndexToFetch = 0;
-
+      /**
+       * Next chunk index to write to local file.  
+       * `chunkIndexToWrite = 10` means that chunks 0-9 is already written to local, and
+       * `ItemFetchers` 0 - 9 are removed from `pool`.
+       */
       let chunkIndexToWrite = 0;
 
-      async function tryToWriteDate() {
-        // dev
-        let dev = [];
-
+      async function tryToWriteData() {
         let buffers = [];
-        while ((pool.get(chunkIndexToWrite)?.loaded) && (chunkIndexToWrite < length)) {
-          // dev
-          dev.push(chunkIndexToWrite);
 
+        // Beginning at `chunkIndexToWrite`, select adjacent `ItemFetcher`s, which is fetched
+        // successfully, at much as possible to write them to local file.
+        // Selecting adjacent `ItemFetcher`s ensure that all bytes are written in correct order.
+        while ((pool.get(chunkIndexToWrite)?.loaded) && (chunkIndexToWrite < length)) {
           buffers.push(pool.get(chunkIndexToWrite).data);
           pool.delete(chunkIndexToWrite);
 
           chunkIndexToWrite += 1;
         }
         if (buffers.length) {
+          // Since some of `ItemFetcher`s are successfully downloaded and removed from `pool`
+          // We need to start `ItemFetcher` more
           loadData();
-
-          log("[trying to write]", dev);
-          await writeToSave(buffers);
-          log("[successfully write]", dev);
+          await writeDataToLocalFile(buffers);
         }
 
         // Wrote last chunk
@@ -117,9 +121,12 @@ export const downloadFiles = (setComments, setSize) => async () => {
         }
       }
 
+      /**
+       * Make new {@link ItemFetcher}s, and add them to {@link pool}.
+       */
       function loadData() {
-        while ((chunkIndexToFetch < length) && (pool.size < maxBatchSize)) {
-          pool.set(chunkIndexToFetch, new ItemReader(chunkIndexToFetch));
+        while ((chunkIndexToFetch < length) && (pool.size < maxPoolSize)) {
+          pool.set(chunkIndexToFetch, new ItemFetcher(chunkIndexToFetch));
           chunkIndexToFetch += 1;
         }
       }
