@@ -1,6 +1,10 @@
 import config from "./config";
 import { getS3FileSize, getObject, s3 } from './helper';
 
+function log(...args) {
+  console.log(...args);
+}
+
 export const downloadFiles = (setComments, setSize) => async () => {
   /** helper function to display information */
   let pushComment = str => setComments(comments => [...comments, str]);
@@ -16,16 +20,8 @@ export const downloadFiles = (setComments, setSize) => async () => {
 
   function downloadSimultaneously() {
     return new Promise(async resolve => {
-      let pool = new Map();
-      window.pool = pool;
-      let chunkIndexToPush = 0;
-      let indexToWriteFrom = 0;
-      let writing = false;
-      let maxBatchSize = 10;
-      let id = null;
-
       /** the whole number of bytes of the file */
-      let SIZE = 609823123 || await getS3FileSize({ Bucket: config.bucketName, Key: config.Key });
+      let SIZE = await getS3FileSize({ Bucket: config.bucketName, Key: config.Key });
 
       /** the numger of chunks */
       let length = Math.ceil(SIZE / config.ChunkSize);
@@ -43,21 +39,6 @@ export const downloadFiles = (setComments, setSize) => async () => {
         return getObject(config.bucketName, config.Key, byteRangeOfChunk(index));
       }
 
-      /** Fetch maximum next batch */
-      function fetchNextOne() {
-        if ((chunkIndexToPush >= length) && (!pool.size)) {
-          clearInterval(id);
-          return resolve();
-        }
-        if (pool.size >= maxBatchSize) {
-          return;
-        }
-        while((pool.size <= maxBatchSize) && (chunkIndexToPush < length)) {
-          pool.set(chunkIndexToPush, new ItemReader(chunkIndexToPush));
-          ++chunkIndexToPush;
-        }
-      }
-
       /** Write the given buffers to local using `writer` */
       async function writeToSave(buffers) {
         for (let i = 0, length = buffers.length; i < length; i++) {
@@ -68,66 +49,82 @@ export const downloadFiles = (setComments, setSize) => async () => {
         }
       }
 
-      async function writableNow() {
-        if (writing === true) return;
-
-        console.log(`[pool.get(${indexToWriteFrom}).lock]`, pool.get(indexToWriteFrom)?.lock);
-
-        let dev = []; // dev
-
-        let buffers = [];
-        while(pool.get(indexToWriteFrom)?.lock) {
-          buffers.push(pool.get(indexToWriteFrom).data);
-          pool.delete(indexToWriteFrom);
-
-          dev.push(indexToWriteFrom);
-
-          indexToWriteFrom++;
-        }
-
-        if (buffers.length) {
-          console.log("[writing chunk]", dev);
-
-          writing = true;
-          await writeToSave(buffers);
-          writing = false;
-
-          console.log("[writing chunk success]", dev);
-
-          fetchNextOne();
-        }
-      }
-
       class ItemReader {
-        lock = false;
+        loaded = false;
         data = null;
         chunkIndex = null;
 
         constructor(index) {
-          console.log('[start fetching]', index);
+          log('[start_chunk_read]', index);
+          this.chunkIndex = index;
+          
           let _this = this;
-          _this.chunkIndex = index;
-          _this.promise = getDataGivenIndex(index)
+          getDataGivenIndex(index)
             .then(response => {
-              console.log('[chunk_read_success]', index);
+              log('[chunk_read_success]', index);
               _this.data = response;
-              _this.lock = true;
+              _this.loaded = true;
 
-              writableNow(index);
+              tryToWriteDate();
+            })
+            .catch(err => {
+              console.error("[Error]", err);
             });
         }
       }
 
+      //
+      // End helper functions
+      
       pushComment(`The file is ${SIZE} bytes`);
       pushComment(`There are all ${length} chunks`);
-
+      
       pushComment('Fetching...');
+      
+      //
 
-      while ((chunkIndexToPush < maxBatchSize) && (chunkIndexToPush < length)) {
-        pool.set(chunkIndexToPush, new ItemReader(chunkIndexToPush++));
+      let pool = new Map();
+      let maxBatchSize = config.maxBatchSize;
+      let chunkIndexToFetch = 0;
+
+      let chunkIndexToWrite = 0;
+
+      async function tryToWriteDate() {
+        // dev
+        let dev = [];
+
+        let buffers = [];
+        while ((pool.get(chunkIndexToWrite)?.loaded) && (chunkIndexToWrite < length)) {
+          // dev
+          dev.push(chunkIndexToWrite);
+
+          buffers.push(pool.get(chunkIndexToWrite).data);
+          pool.delete(chunkIndexToWrite);
+
+          chunkIndexToWrite += 1;
+        }
+        if (buffers.length) {
+          loadData();
+
+          log("[trying to write]", dev);
+          await writeToSave(buffers);
+          log("[successfully write]", dev);
+        }
+
+        // Wrote last chunk
+        if (chunkIndexToWrite >= length) {
+          resolve();
+        }
       }
 
-      id = setInterval(writableNow, 3000);
+      function loadData() {
+        while ((chunkIndexToFetch < length) && (pool.size < maxBatchSize)) {
+          pool.set(chunkIndexToFetch, new ItemReader(chunkIndexToFetch));
+          chunkIndexToFetch += 1;
+        }
+      }
+
+      loadData();
     });
   };
 };
