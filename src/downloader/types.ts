@@ -31,3 +31,5 @@ export interface ItemFetcherOptions {
 export type AWSGetRequest = AWS.Request<AWS.S3.GetObjectOutput, AWS.AWSError>;
 
 export type GetObjectEvent = 'error' | 'retry' | 'complete' | 'httpDownloadProgress';
+
+export type SingleDownloaderStatus = 'Idle' | 'Downloading' | 'Pausing' | 'Paused' | 'Success' | 'Aborted';

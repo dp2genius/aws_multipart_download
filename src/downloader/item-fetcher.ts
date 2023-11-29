@@ -17,6 +17,12 @@ export class ItemFetcher {
     this.request.send();
     this.request.on('complete', function () {
       const res = arguments[0];
+
+      // Dev
+      if (res.data === null) {
+        debugger;
+      }
+
       _this.data = res.data.Body;
     });
   }

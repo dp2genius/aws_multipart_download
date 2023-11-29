@@ -1,14 +1,18 @@
 import { DownloadHelper } from './download-helper';
 import { ItemFetcher } from './item-fetcher';
-import { SingleDownloaderOptions } from './types';
+import { SingleDownloaderOptions, SingleDownloaderStatus } from './types';
 
 export class SingleDownloader {
   private readonly helper: DownloadHelper;
   public readonly options: SingleDownloaderOptions;
 
+  public status: SingleDownloaderStatus = 'Idle';
+
   private chunkIndexToFetch = 0;
   private chunkIndexToWrite = 0;
   private pool = new Map();
+
+  private fileTotalLength: number | null | undefined = null;
 
   constructor(helper: DownloadHelper, options: SingleDownloaderOptions) {
     this.helper = helper;
@@ -20,10 +24,16 @@ export class SingleDownloader {
 
   download() {
     return new Promise(async (resolve, reject) => {
+      this.status = 'Downloading';
+
+      if (this.fileTotalLength === null) {
+        this.fileTotalLength = await this.helper.getFileLength(this.options.Key);
+      }
+
+      const fileTotalLength = this.fileTotalLength;
       const chunkSize = this.options.chunkSize;
       const connections = this.options.connections;
 
-      const fileTotalLength = 10000000; //await this.helper.getFileLength(this.options.Key);
       if (fileTotalLength === undefined) {
         return reject(new Error(`Not able to calculate the total length of the ${this.options.Key}.`));
       }
@@ -47,12 +57,17 @@ export class SingleDownloader {
         }
 
         if (buffers.length) {
-          loadData();
+          if (this.status !== 'Pausing') {
+            loadData();
+          }
           // TODO
           console.log("[write] <", this.chunkIndexToWrite);
+
+          this.status = 'Paused';
         }
 
         if (this.chunkIndexToWrite >= chunkCount) {
+          this.status = 'Success';
           resolve("success");
         }
       };
@@ -76,12 +91,21 @@ export class SingleDownloader {
   }
 
   pause() {
-
+    this.status = 'Pausing';
   }
 
-  resume() { }
+  resume() {
+    console.assert(this.status === 'Paused');
+    this.download();
+  }
 
-  abort() { }
+  abort() {
+    this.status = 'Aborted';
+    this.pool.forEach(request => request.abort());
+  }
 
-  reset() { }
+  reset() {
+    this.status = 'Idle';
+    this.pool.clear();
+  }
 }
