@@ -13,18 +13,27 @@ export class SingleDownloader {
   private pool = new Map();
 
   private fileTotalLength: number | null | undefined = null;
+  private loaded = 0;
+
+  private fileSaver: FileSystemFileHandle | null = null;
+  private writer: FileSystemWritableFileStream | null = null;
 
   constructor(helper: DownloadHelper, options: SingleDownloaderOptions) {
     this.helper = helper;
     this.options = options;
 
-    // TODO
     this.download();
   }
 
   download() {
+    if (!['Idle', 'Paused'].includes(this.status)) {
+      return console.error(`Not able to download ${this.options.Key}. Current state is ${this.status}.`);
+    }
     return new Promise(async (resolve, reject) => {
       this.status = 'Downloading';
+
+      this.fileSaver = await showSaveFilePicker();
+      this.writer = await this.fileSaver.createWritable();
 
       if (this.fileTotalLength === null) {
         this.fileTotalLength = await this.helper.getFileLength(this.options.Key);
@@ -46,7 +55,7 @@ export class SingleDownloader {
         return `bytes=${start}-${end}`;
       };
 
-      const writeData = () => {
+      const writeData = async () => {
         const buffers = [];
 
         while ((this.pool.get(this.chunkIndexToWrite)?.data) && (this.chunkIndexToWrite < chunkCount)) {
@@ -57,18 +66,26 @@ export class SingleDownloader {
         }
 
         if (buffers.length) {
-          if (this.status !== 'Pausing') {
+          if (this.status === 'Pausing') {
+            this.status = 'Paused';
+          } else {
             loadData();
+            let length = buffers.length;
+            for (let i = 0; i < length; i++) {
+              if (this.writer) {
+                await this.writer.write(buffers[i]);
+              }
+            }
           }
-          // TODO
-          console.log("[write] <", this.chunkIndexToWrite);
-
-          this.status = 'Paused';
         }
 
         if (this.chunkIndexToWrite >= chunkCount) {
-          this.status = 'Success';
-          resolve("success");
+          this.writer?.close()
+            .then(() => {
+              this.status = 'Success';
+              resolve("success");
+            })
+            .catch(reject);
         }
       };
 
@@ -80,7 +97,20 @@ export class SingleDownloader {
           });
           this.pool.set(this.chunkIndexToFetch, itemFetcher);
 
-          itemFetcher.on('complete', writeData);
+          itemFetcher.on('complete', async () => {
+            await writeData();
+            this.options.eventHandlers.get('complete')
+              ?.forEach(callback => callback(this.options.Key));
+
+            this.options.eventHandlers.get('progress')
+              // @ts-ignore
+              ?.forEach(callback => callback(this.options.Key, this.loaded / this.fileTotalLength));
+          });
+
+          itemFetcher.on('error', () => {
+            this.options.eventHandlers.get('error')
+              ?.forEach(callback => callback(this.options.Key));
+          });
 
           this.chunkIndexToFetch += 1;
         }
@@ -91,17 +121,22 @@ export class SingleDownloader {
   }
 
   pause() {
-    this.status = 'Pausing';
+    if (this.status === 'Downloading') {
+      this.status = 'Pausing';
+    }
   }
 
   resume() {
-    console.assert(this.status === 'Paused');
-    this.download();
+    if (this.status === 'Paused') {
+      this.download();
+    }
   }
 
   abort() {
-    this.status = 'Aborted';
-    this.pool.forEach(request => request.abort());
+    if (this.status === 'Downloading') {
+      this.status = 'Aborted';
+      this.pool.forEach(request => request.abort());
+    }
   }
 
   reset() {

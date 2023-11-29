@@ -1,5 +1,5 @@
 import { DownloadHelper } from './download-helper';
-import { SingleDownloader } from './signle-downloader';
+import { SingleDownloader } from './single-downloader';
 import { DownloaderOptions, SingleDownloaderOptions, DownloaderEvent } from './types';
 
 import { _16MB } from './consts';
@@ -7,6 +7,7 @@ import { _16MB } from './consts';
 export class Downloader {
   private readonly helper: DownloadHelper;
   private readonly singleLoaders: Map<string, SingleDownloader> = new Map();
+  private readonly eventHandlers: Map<DownloaderEvent, Function[]> = new Map();
 
   public readonly downloaderOptions: DownloaderOptions;
 
@@ -22,7 +23,8 @@ export class Downloader {
     const singleDownloaderOptions = {
       connections: options?.connections || this.downloaderOptions.connections,
       chunkSize: options?.chunkSize || this.downloaderOptions.chunkSize,
-      Key: key
+      Key: key,
+      eventHandlers: this.eventHandlers
     } as SingleDownloaderOptions;
 
     this.singleLoaders.set(key, new SingleDownloader(this.helper, singleDownloaderOptions));
@@ -57,6 +59,13 @@ export class Downloader {
   }
 
   on(event: DownloaderEvent, callback: Function) {
+    this.eventHandlers.set(event, [...(this.eventHandlers.get(event) || []), callback]);
+  }
 
+  off(event: DownloaderEvent, callback: Function) {
+    this.eventHandlers.set(
+      event,
+      this.eventHandlers.get(event)?.filter(func => func !== callback) || []
+    );
   }
 }
