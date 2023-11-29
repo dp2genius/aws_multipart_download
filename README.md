@@ -2,6 +2,83 @@
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
+## Downloader
+```typescript
+class Downloader {}
+
+interface DownloadOptions {
+  /**
+   * maximum connections the downloader can use in parallel
+   */
+	connections?: number;
+  // ...
+}
+
+const downloader = new Downloader(downloadOptions);
+
+// Actions
+/**
+ * Add url to downloader and (optionally?) start download immediately
+ * @params url: string;
+ */
+downloader.download(url: string);
+
+/**
+  * Pause a certain download
+  */
+downloader.pause(url: string);
+
+/**
+  * Pause all downloads
+  */
+downloader.pauseAll();
+
+/**
+  * Resume a paused download
+  */
+downloader.resume();
+downloader.resumeAll();
+
+/**
+ * Abort a download and drop its data
+ */
+downloader.abort(url: string);
+downloader.abortAll(url: string);
+
+/**
+ * Abort all downloads, drop all downloaded data,
+ * reset the state of downloader
+ */
+downloader.reset();
+
+// Events
+/**
+ * emit when download progress changes
+ * @params url: string
+ * @params progress: number within [0, 1], indicates download progress
+ */
+downloader.on('progress', (url: string; progress: number; ... ) => void);
+
+/**
+ * emit when download fails
+ * @params url: string
+ * @params reason: Error
+ */
+downloader.on('error', (url: string; reason: unknown) => void);
+
+/**
+ * emit when download completes
+ * @params url: string
+ * @params reason: Error
+ */
+downloader.on('complete', (url: string) => void);
+
+/**
+ * Stop to listen to a certain event
+ */
+downloader.off(eventName: string; callback: (...) => unknown)
+```
+
 ## Available Scripts
 
 In the project directory, you can run:
