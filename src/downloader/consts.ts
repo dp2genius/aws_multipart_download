@@ -1,0 +1,1 @@
+export const _16MB = 16777216;
