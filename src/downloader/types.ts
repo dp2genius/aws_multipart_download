@@ -26,7 +26,8 @@ export interface SingleDownloaderOptions {
 
 export interface ItemFetcherOptions {
   Key: string,
-  Range: string
+  Range: string,
+  chunkIndex: number
 }
 
 export type AWSGetRequest = AWS.Request<AWS.S3.GetObjectOutput, AWS.AWSError>;
@@ -36,3 +37,8 @@ export type GetObjectEvent = 'error' | 'retry' | 'complete' | 'httpDownloadProgr
 export type SingleDownloaderStatus = 'Idle' | 'Downloading' | 'Pausing' | 'Paused' | 'Success' | 'Aborted';
 
 export type DownloaderEvent = 'progress' | 'error' | 'complete';
+
+// ItemFetcher types
+
+/** Response data type */
+export type ResponseData = AWS.S3.GetObjectOutput | void;

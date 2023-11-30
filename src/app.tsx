@@ -1,5 +1,6 @@
 import { DownloadHelper, Downloader } from "./downloader";
 import config from "./config";
+import { useState } from "react";
 
 const downloadHelper = new DownloadHelper({
   credentials: config.credentials,
@@ -8,16 +9,32 @@ const downloadHelper = new DownloadHelper({
 });
 
 const downloader = new Downloader(downloadHelper, {
-  connections: 15,
-  chunkSize: 16777216
+  connections: 25,
+  chunkSize: 3145728 // 16777216
 });
 
+// Colttaine.zip into Colttaine.1.zip & Colttaine.2.zip & Colttaine.3.zip
+
+// Dev
+// @ts-ignore
+window.fails = {};
+// @ts-ignore
+window.downloader = downloader;
+// End Dev
+
 export default function App() {
-  const onClick = async () => {
-    downloader.download(config.Key);
+  const [progress, setProgress] = useState({} as object);
+
+  const onClick = (key: string) => () => {
+    downloader.download(key);
 
     downloader.on('progress', (key: string, value: number) => {
-      console.log(`[progress] - ${key} - ${value}`);
+      
+      setProgress((progress: object) => ({
+        ...progress,
+        [key]: value
+      }));
+
     });
 
     downloader.on('complete', (key: string) => {
@@ -29,24 +46,27 @@ export default function App() {
     });
   };
 
-  const onCancel = async () => {
-    downloader.abortAll();
-  };
+  const onCancel = (key: string) => () => { };
 
-  const pauseAll = () => {
-    downloader.pauseAll();
-  }
+  const onPause = (key: string) => () => { };
 
-  const resumeAll = () => {
-    downloader.resumeAll();
-  }
+  const onResume = (key: string) => () => { };
 
   return (
-    <div>
-    <button onClick={onClick}>Download</button><br/>
-    <button onClick={onCancel}>cancelAll</button><br/>
-    <button onClick={pauseAll}>pauseAll</button><br/>
-    <button onClick={resumeAll}>resumeAll</button>
-    </div>
+    <table>
+      <tbody>
+        <tr>
+          <td>Colttaine.zip</td>
+          <td><button onClick={onClick("Colttaine.zip")}>Download</button></td>
+          <td><button onClick={onCancel("Colttaine.zip")}>Cancel</button><br /></td>
+          <td><button onClick={onPause("Colttaine.zip")}>Pause</button><br /></td>
+          <td><button onClick={onResume("Colttaine.zip")}>Resume</button></td>
+          <td>{
+            // @ts-ignore
+            progress["Colttaine.zip"]
+          }</td>
+        </tr>
+      </tbody>
+    </table>
   );
 }
