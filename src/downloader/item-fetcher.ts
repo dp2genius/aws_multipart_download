@@ -15,9 +15,14 @@ export class ItemFetcher {
 
     this.request = this.helper.getObject(this.options.Key, this.options.Range);
     this.request.send();
+
     this.request.on('complete', function () {
       const res = arguments[0];
       _this.data = res.data.Body;
+    });
+
+    this.request.on('retry', () => {
+      setTimeout(() => _this.request.send(), 500);
     });
   }
 
