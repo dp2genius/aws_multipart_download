@@ -1,35 +1,22 @@
 import { DownloadHelper } from "./download-helper";
-import { AWSGetRequest, GetObjectEvent, ItemFetcherOptions } from "./types";
+import { AWSGetRequest, ResponseData, ItemFetcherOptions } from "./types";
 
 export class ItemFetcher {
-  public readonly options: ItemFetcherOptions;
-  public data = null;
-  private helper: DownloadHelper;
+  public data?: ResponseData;
+  public on?: Function;
+
   private request: AWSGetRequest;
 
   constructor(helper: DownloadHelper, options: ItemFetcherOptions) {
-    const _this = this;
+    this.request = helper.getObject(options.Key, options.Range);
 
-    this.helper = helper;
-    this.options = options;
-
-    this.request = this.helper.getObject(this.options.Key, this.options.Range);
-    this.request.send();
-
-    this.request.on('complete', function () {
-      const res = arguments[0];
-
-      // Dev
-      if (res.data === null) {
-        debugger;
-      }
-
-      _this.data = res.data.Body;
+    this.request.on('complete', (res) => {
+      this.data = res.data?.Body;
     });
 
-    this.request.on('retry', () => {
-      setTimeout(() => _this.request.send(), 500);
-    });
+    this.start();
+
+    this.on = this.request.on;
   }
 
   start() {
@@ -38,10 +25,5 @@ export class ItemFetcher {
 
   abort() {
     this.request.abort();
-  }
-
-  on(event: GetObjectEvent, callback: Function) {
-    // @ts-ignore
-    this.request.on(event, callback);
   }
 }
