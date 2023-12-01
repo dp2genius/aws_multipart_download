@@ -68,4 +68,8 @@ export class Downloader {
       this.eventHandlers.get(event)?.filter(func => func !== callback) || []
     );
   }
+
+  getStatus(key: string) {
+    return this.singleLoaders.get(key)?.status || 'NoLoader';
+  }
 }

@@ -34,7 +34,10 @@ export type AWSGetRequest = AWS.Request<AWS.S3.GetObjectOutput, AWS.AWSError>;
 
 export type GetObjectEvent = 'error' | 'retry' | 'complete' | 'httpDownloadProgress';
 
-export type SingleDownloaderStatus = 'Idle' | 'Downloading' | 'Pausing' | 'Paused' | 'Success' | 'Aborted';
+/** Single loader state */
+export type SingleDownloaderStatus = 'Idle' | 'Downloading' | 'Pausing' | 'Paused' | 'Success' | 'Aborted' | 'Error';
+
+export type AWSError = AWS.AWSError;
 
 export type DownloaderEvent = 'progress' | 'error' | 'complete';
 

@@ -1,6 +1,6 @@
 import { DownloadHelper } from './download-helper';
 import { ItemFetcher } from './item-fetcher';
-import { ResponseData, SingleDownloaderOptions, SingleDownloaderStatus } from './types';
+import { ResponseData, SingleDownloaderOptions, SingleDownloaderStatus, AWSError } from './types';
 
 export class SingleDownloader {
   private readonly helper: DownloadHelper;
@@ -18,6 +18,8 @@ export class SingleDownloader {
   private fileSaver: FileSystemFileHandle | null = null;
   private writer?: FileSystemWritableFileStream;
 
+  private id?: NodeJS.Timer;
+
   constructor(helper: DownloadHelper, options: SingleDownloaderOptions) {
     this.helper = helper;
     this.options = options;
@@ -31,8 +33,10 @@ export class SingleDownloader {
     }
 
     return new Promise(async (resolve, reject) => {
-      this.fileSaver = await showSaveFilePicker();
-      this.writer = await this.fileSaver.createWritable();
+      if (this.status !== 'Paused') {
+        this.fileSaver = await showSaveFilePicker();
+        this.writer = await this.fileSaver.createWritable();
+      }
 
       this.status = 'Downloading';
 
@@ -62,6 +66,11 @@ export class SingleDownloader {
 
       /** Write fetched data to local writer */
       const writeData = async () => {
+        console.assert(this.writer !== undefined);
+        if (["Aborted"].includes(this.status)) {
+          return resolve("Aborted");
+        }
+
         const buffers = [];
 
         while (this.chunkIndexToWrite < chunkCount) {
@@ -87,7 +96,10 @@ export class SingleDownloader {
             }
           }
           if (this.status === 'Pausing') {
-            this.status = 'Paused';
+            console.log(this.chunkIndexToFetch, this.chunkIndexToWrite);
+            if (this.chunkIndexToFetch === this.chunkIndexToWrite) {
+              this.status = 'Paused';
+            }
           } else {
             loadData();
           }
@@ -100,6 +112,7 @@ export class SingleDownloader {
               this.options.eventHandlers.get('complete')
                 ?.forEach(callback => callback(this.options.Key));
               resolve("success");
+              clearInterval(this.id);
             })
             .catch(reject);
         }
@@ -117,7 +130,7 @@ export class SingleDownloader {
           });
           this.pool.set(this.chunkIndexToFetch, itemFetcher); // Register the fetcher to pool
 
-          itemFetcher.on('complete', () => { // fetcher successfully pulled data
+          itemFetcher.on('success', () => { // fetcher successfully pulled data
             writeData(); // run writer
 
             // Dev
@@ -130,6 +143,9 @@ export class SingleDownloader {
           });
 
           itemFetcher.on('retry', () => { // fetcher did not pulled data
+            if (this.status === 'Aborted') {
+              return;
+            }
 
             // Dev
             // @ts-ignore
@@ -145,10 +161,12 @@ export class SingleDownloader {
             }, itemFetcher.timeout);
           });
 
-          itemFetcher.on('error', () => {
-            this.options.eventHandlers.get('error')
-              ?.forEach(callback => callback(this.options.Key));
-            debugger
+          itemFetcher.on('error', (err: AWSError) => {
+            if (err.code !== 'RequestAbortedError') {
+              this.options.eventHandlers.get('error')
+                ?.forEach(callback => callback(this.options.Key));
+              debugger;
+            }
           });
 
           this.chunkIndexToFetch += 1;
@@ -156,10 +174,12 @@ export class SingleDownloader {
       };
 
       loadData();
+      this.id = setInterval(writeData, 3000);
     });
   }
 
   pause() {
+    console.assert(this.status === 'Downloading');
     if (this.status === 'Downloading') {
       this.status = 'Pausing';
     }
@@ -172,13 +192,16 @@ export class SingleDownloader {
   }
 
   abort() {
-    if (this.status === 'Downloading') {
-      this.status = 'Aborted';
-      this.pool.forEach(request => request.abort());
+    if (!['Downloading', 'Pausing', 'Paused'].includes(this.status)) {
+      return console.warn(`Current loader state for '${this.options.Key}' is '${this.status}'`);
     }
+    this.status = 'Aborted';
+    this.pool.forEach(request => request.abort());
+    this.writer?.close();
   }
 
   reset() {
+    this.abort();
     this.status = 'Idle';
     this.pool.clear();
   }
